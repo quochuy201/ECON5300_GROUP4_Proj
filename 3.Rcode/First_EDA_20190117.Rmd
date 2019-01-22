@@ -1,0 +1,482 @@
+---
+title: "LMA project - EDA"
+author: "Huy Le"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_notebook
+---
+Commented header  
+=========================================
+
+```{r echo = TRUE}
+# Course: 
+# Title: 
+# Purpose: 
+# Date: 
+# Author: Huy LE
+```
+
+
+Clear environment of variables and packages  
+=========================================
+
+```{r}
+# A common problem in coding is having unknown dependencies on variables or 
+# packages being used in earlier analysis. This happens when you are running 
+# code but do not close R or RStudio between sessions. To reduce the probability
+# of this happening you can clear your environmen t of variables, functions and
+# packages at the beginning of a script. That way you know your code is only
+# running on what is within that script.
+# Note: you can reorder a long comment with short-cut Ctrl+Shift+/
+
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+
+# Clear environmet of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+
+```
+
+Load packages that include different functions  
+=========================================
+
+
+```{r }
+# Load libraries
+library(tidyverse)
+# WILL ONLY USE BASE CODE IN THIS ANALYSIS SO NOT LOAD LIBRARIES
+
+```
+
+Load data and begin new EDA  
+=========================================
+
+
+```{r}
+# Load data 
+wapop_data <- read.csv("../2.PreparedData/wadata.csv")
+
+# Examine data structure 
+head(wapop_data$ID)
+str(wapop_data)
+
+```
+Prepare data sample for EDA
+==========================================
+```{r}
+# prepare data for EAD
+# Create a sample for EDA
+wapop_data[is.na(wapop_data$SCHL) <- 0]
+
+# labling the variable RAC1P
+levels(wapop_data$RAC1P) <- list("1" = "White alone",
+                                "2" =  "Black or African American alone",
+                               "3" =  "American Indian alone",
+                               "4" =  "Alaska Native alone",
+                               "5" =  "American Indian and Alaska Native",
+                               "6" =  "Asian alone",
+                               "7" =  "Native Hawaiian and Other Pacific Islander alone",
+                               "8" =  "Some Other Race alone",
+                               "9" =  "Two or More Races")
+
+
+
+wapop_data <- wapop_data %>% mutate(EDU = ifelse(SCHL > 15, ifelse( SCHL > 19, "HigherEduc", "Associate"), "HighSchool")) %>%
+                         select(ID, RAC1P, EDU, SCHL, PERNP )
+
+wapop_filter <- wapop_data %>% filter(RAC1P != 9, SCHL != 0) 
+
+set.seed(2)
+wapop_sample <- wapop_filter[sample(nrow(wapop_filter),500),]
+
+
+str(wapop_sample)
+
+summary(wapop_sample)
+```
+
+
+1. Univariate non-graphical -- Categorical -- before excluded
+=========================================
+##Step 1
+
+```{r}
+Race_tab <- rbind(table(wapop_data$RAC1P),
+                    prop.table(table(wapop_data$RAC1P)),
+                    prop.table(table(wapop_data$RAC1P))*100)
+row.names(Race_tab) <- c("Count", "Proportion", "Percent")
+round(Race_tab, 2)
+
+```
+
++ 78.41% of Pop is White alone (na.rm =TRUE)
++ 5.12% is two or more than two race 
+    * as we discussed, we will remove those observation with race == 9
+    
+
+##Step 2
+
+```{r}
+shcl_tab <- rbind(table(wapop_data$SCHL),
+                    prop.table(table(wapop_data$SCHL)),
+                    prop.table(table(wapop_data$SCHL))*100)
+row.names(shcl_tab) <- c("Count", "Proportion", "Percent")
+round(shcl_tab, 2)
+
+# number observation have SCHL = NA
+sum(is.na(wapop_data$SCHL))
+sum(is.na(wapop_data$SCHL))/nrow(wapop_data)*100
+#
+# nrow(wapop_data[wapop_data$SCHL <= 15,])
+# nrow(wapop_data[wapop_data$SCHL <= 15,])/nrow(wapop_data)*100
+educ_tab <-  rbind(table(wapop_data$EDU),
+                    prop.table(table(wapop_data$EDU)),
+                    prop.table(table(wapop_data$EDU))*100)
+row.names(educ_tab) <- c("Count", "Proportion", "Percent")
+round(educ_tab, 2)
+```
+
+- 2317 (3,2%) person are under 3 years old (Education == N.A) => will remove  when doing futher analysis
+- 17% of population have Bachelor' Degree (21)
+- 15% of population obtained high school diploma (16)
+- 17730 (na.rm =TRUE) (25.30%) people are in <= high school
+
+##Step 3
+
+```{r}
+summary(wapop_data$PERNP)
+
+# Na observation in earning
+nrow(wapop_data[wapop_data$PERNP == 0,])
+
+```
+================================================================
+Min.      1st Qu.   Median      Mean    3rd Qu.    Max.     NA's 
+  -5100       0     14000       33897   48000     850000    13270 
+=================================================================
+- 2317 < 3 yrs, but 13270 obs NA in earning and 34241 have 0 earnings
+    + It could be because 20047 people are in or lower highschool
+    
+- Should change the unit of earnings  from $ -> 1000 $ for visualization.    
+
+    
+2. Univariate graphical code 
+=========================================
+in this section we will user wapop_sample, for EAD, because the population is too big
+
+    2.1 Education Attainment
+
+```{r}
+
+# graphics barplots to see count distribution of factor levels
+p <- ggplot( data = wapop_sample, mapping = aes( x = EDU))
+
+p + geom_bar(stat = "count") +
+      ggtitle("WA population Education attainment in sample 500obs") +
+      geom_text(stat = "count", 
+                aes(label = ..count..), 
+                vjust = -0.2, 
+                position = position_dodge(0.9))+
+      labs(x = "Education attainment", y = "Frequence")
+
+```
+
+    2.2 Race
+
+```{r}
+p <- ggplot( data = wapop_sample, mapping = aes( x = RAC1P, fill = factor(RAC1P)))
+
+p + geom_bar(stat = "count") +
+      ggtitle("WA population Races and Ethnicities in sample 500obs") +
+      geom_text(stat = "count", 
+                aes(label = ..count..), 
+                vjust = -0.2, 
+                position = position_dodge(0.9))+
+      labs(x = "Races and Ethnicities", y = "Frequence", fill = "Race")
+
+```
+
+
+3. Univariate non-graphical -- Quantitative
+=========================================
+
+```{r}
+# Get descrptive stats 
+summary(wapop_data)
+summary(wapop_sample)
+```
+
++ All three numerical and 1 integer variables have divergent mean and median so likely skewed distributions  
+
+4. Univariate graphical -- Quantitative
+=========================================
+Histograms 
+```{r}
+
+```
+
+
+```{r}
+p <- ggplot( data = wapop_sample, mapping = aes( x = RAC1P, y = PERNP/1000, colour = EDU))
+
+p + geom_point(stat = "identity") +
+      ggtitle("WA population Earnings in Races") +
+      labs(x = "Race", y = "Earnings")
+# 
+#      geom_text(stat = "identity", 
+#                 aes(label = ..count..)
+#                ) +
+
+hist(wapop_sample$PERNP/1000, xlim = c(min(wapop_sample$PERNP/1000, na.rm = TRUE), max(wapop_sample$PERNP/1000, na.rm = TRUE))) #unit 1000 USD
+
+par(mfrow = c(1,2))
+plot(wapop_sample$RAC1P, wapop_sample$PERNP/1000 ,pch = 16)
+plot(wapop_sample$SCHL, wapop_sample$PERNP/1000 ,pch = 16)
+
+# levels(wapop_sample$SCHL) <- edu_title
+# nlevels(wapop_sample$SCHL)
+# sort(unique(wapop_sample$SCHL))
+# levels(factor(wapop_sample$SCHL))
+
+```
+- High income places almost at "White Alone"" and people have at least Bachelor's Degree.
+
+
+## Boxplots of quantitative data 
+
+```{r}
+# Set grid pattern for graph arrangement
+#par(mfrow = c(2, 3))
+#boxplot(office$Year, main = "Year")
+#boxplot(office$Sales, main = "Sales")
+
+```
+
+
+5. Multivariate non-graphical -- Categorical
+=========================================
+Use cross-tabs for counts/proportion/percent  
+
++ Cross-tabs are for more than one categorical variable  
+
++ Create cross-tab with margins
+
+```{r}
+# Make a cross-tab with margins
+addmargins(xtabs(~ EDU + RAC1P,  data = wapop_sample))
+
+```
+
++ But proportions are easier to understand so make a proportions table
+
+```{r}
+# Make a cross-tab with margins
+addmargins(round(prop.table(xtabs(~ EDU + RAC1P,  data = wapop_sample)),3))
+
+```
+
+
+
+```{r}
+# Make a cross-tab with margins
+#addmargins(prop.table(xtabs(~ Region + Sub.Category,  data = office)))
+
+```
+
+
+6. Multivariate graphical code -- Categorical
+=========================================
+
++ Tile graph  
+
+```{r}
+#Correlation Race - Education
+
+p <- ggplot( data = wapop_sample, mapping = aes( x = RAC1P, fill= EDU))
+
+p + geom_bar(stat = "count", position = "dodge") +
+    ggtitle("WA population Races - Education") +
+    geom_text(stat = "count",
+                aes(label = ..count..),
+                vjust = -0.2, 
+                position = position_dodge(0.9)) +
+    labs(x = "Race", y = "Education")
+
+```
+
+
+7. Multivariate non-graphical -- Quantitative
+=========================================
+The standard measure between quantitative variables is correlation  
+
+```{r}
+# Find correlation of quantiative variables
+str(wapop_sample)
+plot(wapop_sample$RAC1P, wapop_sample$SCHL)
+
+
+```
+
+
+8. Multivariate graphical code -- Quantitative
+=========================================
+
+```{r}
+# Correlation plot
+#plot(office[, 5:8])
+
+```
+
++ Note: can see correlations and individual variable distributions  
+
+```{r}
+# I prefer the correlation plot from the psych package
+#library(psych)
+#pairs.panels(office[, 5:8])
+
+```
+
++ See an interesting relationship between profit and the other quantitative variables
+
+
+## There are many options when using quantitative variables
+
+Usually some form of a scatter plot
+
++ Can use size, shape, color to identify additional variables  
++   
+
+
+```{r}
+# Begin with standard scatter plot
+#plot(office$Discount, office$Profit)
+
+```
+
++ This is just a larger version of the plot above  
+    - Use if you want to examine a pattern more closely  
++ Profits decrease as discounts increase  
+
+
+## Can add other variables with color, shape, size, etc
+
+
+```{r}
+# Differentiate region with color, not they are alphabetical
+#plot(office$Discount, office$Profit, col = office$Region)
+#legend(x = "topright",  
+#       legend = levels(office$Region), 
+#       col = c(1:nlevels(office$Region)), 
+#       pch = 1) 
+
+```
+
+
+9. Multivariate non-graphical -- Categorical and Quantitative
+=========================================
+
+```{r}
+# Form table of total profit by by region and sub.category
+# tapply function is like other apply functions but does a function [sum in this case] over an indicie [Region in this case]
+# apply functions are generally
+#profit_sum <- round(rbind(
+#  tapply(office[office$Region == "Central",]$Profit, office[office$Region == "Central",]$Sub.Category, sum),
+#  tapply(office[office$Region == "East",]$Profit, office[office$Region == "East",]$Sub.Category, sum),
+#  tapply(office[office$Region == "South",]$Profit, office[office$Region == "South",]$Sub.Category, sum),
+#  tapply(office[office$Region == "West",]$Profit, office[office$Region == "West",]$Sub.Category, sum)
+#  ),
+#  0)
+#row.names(profit_sum) <- c("Central", "East", "South", "West")
+#profit_sum
+
+
+```
+
+
+```{r}
+# Form table of medians since profit was skewed
+
+
+
+```
+
+
+
+10. Multivariate graphical -- Categorical and Quantitative
+=========================================
+Many options available  
+
++ First do a basic barplot    
+    - Will try many others when use ggplot2  
++ Again, these are exploration graphs  
+    - Not presentation graphs  
+    
+```{r}
+# Doing a subset of the table to just show variables of interest
+#keep_cat <- c("Accessories", "Binders", "Copiers", "Machines", "Paper", "Phones", "Tables")
+#small_tab <- profit_sum[, keep_cat]
+
+# Note: had to use t() to traspose the table to get it to print with profit in the bars and Sub.Cat on x-axis
+#par(mfrow = c(1, 1))
+#barplot(small_tab, 
+#         beside = TRUE, 
+#         horiz = TRUE, 
+#         las = 2, 
+#         col = c(1:4),
+#         main = "Stop or reduce selling machines.\nProducts to increase varies by region.",
+#         xlab = "Total profit by region and subcategory",
+#         adj = 0)
+# axis(1, at=axTicks(1), labels=sprintf("$%s", axTicks(1)), las = 2) # add $ to x-axis tics
+# legend(x = "topright",  
+#        legend = levels(office$Region), 
+#        col = c(1:4),
+#        pch = 15)
+
+```
+
+
+Now I am going to make a copy of the graph that I can call from another RMarkedown file  
+
++ Could also save as jpeg or pdf  
+
+```{r}
+#  
+# pdf(NULL)
+# dev.control(displaylist = "enable")
+# 
+# par(mfrow = c(1, 1))
+# barplot(small_tab, 
+#         beside = TRUE, 
+#         horiz = TRUE, 
+#         las = 2, 
+#         col = c(1:4),
+#         main = "Stop or reduce selling machines.\nProducts to increase varies by region.",
+#         xlab = "Total profit by region and subcategory",
+#         adj = 0)
+# axis(1, at=axTicks(1), labels=sprintf("$%s", axTicks(1)), las = 2) # add $ to x-axis tics
+# legend(x = "topright",  
+#        legend = levels(office$Region), 
+#        col = c(1:4),
+#        pch = 15)
+# 
+# profit_plot <- recordPlot()
+# 
+# invisible(dev.off())
+# 
+# profit_plot
+
+```
+
+
+
+Summary
+=========================================
+
+
+```{r}
+# Save the rds file so I can reuse anything from this file in another file
+# save.image("office_TA.RData")
+
+# recover using load()
+# load("office_TA.RData")
+```
+
