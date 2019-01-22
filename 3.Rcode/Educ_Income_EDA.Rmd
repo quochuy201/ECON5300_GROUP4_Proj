@@ -20,5 +20,70 @@ Load the dataset "wadata.csv" provided and following is the summary of the datas
 # Author: Sourabh Gupta
 
 library(ggplot2)
-wapop_data = read.csv("1.RawData/wadata.csv")
+library(tidyverse)
+library(here)
+wapop_data = read.csv(here("2.PreparedData","wadata.csv"))
+```
+
+```{r}
+
+summary(wapop_data)
+str(wapop_data)
+
+```
+
+Filter required columns for EDA
+=========================================
+
+```{r}
+# convert the education level into 3 categories : HigherEduc, Associate and HighSchool
+wapop_data <- wapop_data %>% mutate(EDU = ifelse(SCHL > 15, ifelse( SCHL > 19, "HigherEduc", "Associate"), "HighSchool")) %>%
+                         select(ID, EDU, SCHL, PERNP )
+
+# convert EDU into ordered factor
+wapop_data$EDU = factor(wapop_data$EDU , levels = c("HighSchool", "Associate", "HigherEduc"), ordered = TRUE)
+
+# Change NA observarions to 0
+wapop_data[is.na(wapop_data)] <- 0
+
+educ_table <- rbind(table(wapop_data$EDU),
+                    prop.table(table(wapop_data$EDU)),
+                    prop.table(table(wapop_data$EDU))*100)
+row.names(educ_table) <- c("Count", "Proportion", "Percent")
+round(educ_table, 2)
+
+```
+
+
+we can see from above table that there are almost equal number of people in each group (HigherEduc, Associate and HighSchool)
+
+```{r}
+# convert the income into 5 levels. :5000, :20000, :60000, :150000, :300000, rest
+wapop_data <- wapop_data %>% 
+              mutate(INC = ifelse(PERNP > 5000, 
+                              ifelse(PERNP > 20000,
+                                ifelse(PERNP > 60000,
+                                  ifelse(PERNP > 150000,
+                                    ifelse(PERNP > 300000, "Level6", "Level5"), "Level4"), "Level3"), "Level2"), "Level1")) %>%
+                         select(ID, EDU, SCHL, PERNP, INC )
+
+# convert EDU into ordered factor
+wapop_data$INC = factor(wapop_data$INC , levels = c("Level1", "Level2", "Level3", "Level4", "Level5", "Level6"), ordered = TRUE)
+
+inc_table <- rbind(table(wapop_data$INC),
+                    prop.table(table(wapop_data$INC)),
+                    prop.table(table(wapop_data$INC))*100)
+row.names(inc_table) <- c("Count", "Proportion", "Percent")
+round(inc_table, 2)
+
+
+```
+
+- 53% of people have income in level1 , i.e.: less than 5000
+- 34% of people have income in level3,4 i.e.: 20001 -- 150000
+
+```{r}
+inc_edu = tapply(wapop_data$INC, wapop_data$EDU, summary)
+inc_edu = do.call(rbind, inc_edu)
+inc_edu
 ```
