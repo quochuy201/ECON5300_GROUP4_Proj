@@ -19,7 +19,7 @@ Commented header
 Clear environment of variables and packages  
 =========================================
 
-```{r}
+```{r include=FALSE}
 # A common problem in coding is having unknown dependencies on variables or 
 # packages being used in earlier analysis. This happens when you are running 
 # code but do not close R or RStudio between sessions. To reduce the probability
@@ -40,7 +40,7 @@ Load packages that include different functions
 =========================================
 
 
-```{r }
+```{r include=FALSE}
 # Load libraries
 library(tidyverse)
 # WILL ONLY USE BASE CODE IN THIS ANALYSIS SO NOT LOAD LIBRARIES
@@ -63,9 +63,10 @@ str(wapop_data)
 Prepare data sample for EDA
 ==========================================
 ```{r}
-# prepare data for EAD
+# prepare data for EDA
 # Create a sample for EDA
-wapop_data[is.na(wapop_data$SCHL) <- 0]
+#### wapop_data[is.na(wapop_data$SCHL) <- 0] -- commented SG
+wapop_data[is.na(wapop_data)] <- 0 # -- Added SG
 
 # labling the variable RAC1P
 levels(wapop_data$RAC1P) <- list("1" = "White alone",

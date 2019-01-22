@@ -1,0 +1,24 @@
+---
+title: "LMA Project - EDA"
+author: "Sourabh Gupta"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    df_print: paged
+---
+
+Load and summarize data
+=========================================
+Load the dataset "wadata.csv" provided and following is the summary of the dataset loaded.
+
+```{r message=TRUE, warning=TRUE, include=FALSE, paged.print=TRUE}
+### YAML for slidy presentation
+# Course: BUAN 5210
+# Title: Day 1 EDA
+# Purpose: Introduce RMarkdown and review EDA process
+# Date: `r format(Sys.time(), '%B %d, %Y')`
+# Author: Sourabh Gupta
+
+library(ggplot2)
+wapop_data = read.csv("1.RawData/wadata.csv")
+```
