@@ -40,11 +40,12 @@ Filter required columns for EDA
 wapop_data <- wapop_data %>% mutate(EDU = ifelse(SCHL > 15, ifelse( SCHL > 19, "HigherEduc", "Associate"), "HighSchool")) %>%
                          select(ID, EDU, SCHL, PERNP )
 
+# Change NA observarions to 0
+wapop_data[is.na(wapop_data)] <- 0
+
 # convert EDU into ordered factor
 wapop_data$EDU = factor(wapop_data$EDU , levels = c("HighSchool", "Associate", "HigherEduc"), ordered = TRUE)
 
-# Change NA observarions to 0
-wapop_data[is.na(wapop_data)] <- 0
 
 educ_table <- rbind(table(wapop_data$EDU),
                     prop.table(table(wapop_data$EDU)),
