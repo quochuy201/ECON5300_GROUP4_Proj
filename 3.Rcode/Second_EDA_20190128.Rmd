@@ -1,0 +1,224 @@
+---
+title: "LMA project - EDA"
+author: "Group 4: Han Li - Huy Le - Sourabh Gupta"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_notebook
+---
+
+Commented header  
+=========================================
+
+```{r echo = TRUE}
+# Course: ECON 5300
+# Title: 2nd EDA
+# Purpose: Preliminary Econometric Estimates 
+# Date: Jan 29
+# Author: Huy LE
+```
+
+
+Clear environment of variables and packages  
+=========================================
+
+```{r}
+
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+
+# Clear environmet of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+
+```
+
+Load packages that include different functions  
+=========================================
+
+
+```{r }
+# Load libraries
+library(tidyverse)
+library(fastDummies)
+
+```
+
+Load data and transform 
+=========================================
+
+
+```{r}
+# Load data 
+waraw <- read.csv("../2.PreparedData/wadata2.csv")
+
+# Examine data structure 
+str(waraw)
+
+```
+
+
+```{r}
+# labling the variable RAC1P
+Race_tab <- data.frame("RAC1P" = 1:9,
+                        "Races"= c("White alone",
+                              "Black or African American alone",
+                              "American Indian alone",
+                              "Alaska Native alone",
+                              "American Indian and Alaska Native",
+                              "Asian alone",
+                              "Native Hawaiian and Other Pacific Islander alone",
+                              "Some Other Race alone",
+                              "Two or More Races"))
+
+
+Gender_tab <- data.frame("SEX" = 1:2, "Gender" = c("Male", "Femeal"))
+
+Mar_tab <- data.frame("MAR" = 1:5,
+                      "Marital" = c("Married","Widowed","Divorced","Separated","Never Married"))
+
+# clean data
+wa <- waraw %>% 
+      # remove all obser under 14 years old, NA value  in education & earnings, Earning < 0
+      filter(AGEP >= 14, !is.na(waraw$PERNP),!is.na(waraw$SCHL), RAC1P != 9, PERNP >= 0) %>%
+      mutate(EDU = ifelse(SCHL <= 9, "Under Highschool", 
+                          ifelse( SCHL <= 16, "Highschool", 
+                                  ifelse( SCHL <= 21 ,"Associate's & Bachelor's degree", "Master, Phd & Higher")))) %>%
+      left_join(Race_tab, by = "RAC1P") %>%
+      left_join(Gender_tab, by = "SEX") %>%
+      left_join(Mar_tab, by = "MAR")
+
+head(wa)
+
+
+summary(wa)
+```
+
+
+1. Univariate non-graphical -- Categorical
+=========================================
+##Earning by education attainment
+
+```{r}
+earn_educ_tab <- wa %>%
+                select(EDU, PERNP) %>%
+                group_by(EDU) %>%
+                summarise(MinEarn = min(PERNP), MeanEarn = mean(PERNP), MedianEarn = median(PERNP), Max = max(PERNP))
+earn_educ_tab
+
+```
+
+##Earning vary by race
+
+```{r}
+earn_race_tab <- wa %>% 
+                select(Races, PERNP) %>%
+                group_by(Races) %>%
+                summarise(MinEarn = min(PERNP), MeanEarn = mean(PERNP), MedianEarn = median(PERNP), Max = max(PERNP))
+earn_race_tab
+```
+
+##Educations vary by Races
+
+
+```{r}
+Edu_race_tab <- wa %>% 
+                select(Races, EDU) %>%
+                group_by(Races, EDU) %>%
+                summarise(Count = n()) %>%
+                spread(EDU, Count)
+Edu_race_tab
+
+
+```
+
+
+2. Univariate graphical code -- Categorical
+=========================================
+Categorical data - bar plot of counts
+
+
+```{r}
+#
+Race_edu_barplot <- wa %>% 
+                select(RAC1P, EDU) %>%
+                group_by(RAC1P, EDU) %>%
+                summarise(Count = n()) %>%
+                ggplot(mapping = aes(x = RAC1P, y = Count, fill = EDU)) +
+                         geom_bar(stat = "identity", position = "dodge")
+                       
+Race_edu_barplot             
+```
+
+```{r}
+
+ggplot(data = wa, mapping = aes( x = AGEP, y = PERNP/1000)) +
+  geom_point(stat = "identity") +
+  ggtitle("WA Residents' Earnings Distribution by ages") +
+  xlab("Age") +
+  ylab("Earnings (1000$)") +
+  geom_smooth(method = lm)
+```
+
+### Earnings - RACE -EDU
+```{r}
+
+ggplot(data = wa, mapping = aes( x = RAC1P, y = PERNP/1000, fill = EDU)) +
+  geom_bar(stat = "identity", position ="dodge") +
+  coord_flip() +
+  ggtitle("WA Residents' Earnings by age") +
+  xlab("RACE") +
+  #scale_x_discrete(labels =c(levels(wa$RAC1P))) +
+  ylab("Earnings (1000$)") 
+  
+
+```
+
+### Earnings BoxPlot
+```{r}
+wa %>% ggplot(mapping = aes(x = EDU, y= PERNP/1000)) +
+      geom_boxplot() +
+      ggtitle("Earnings Distribution") +
+      ylab("Total Earnings (1000$)") +
+      xlab("Education")
+
+                
+
+```
+
+3. Model
+=========================================
+
+```{r}
+#Prepare data
+wadata_slr <- wa %>% 
+              select(PERNP, Races, EDU) %>%
+              fastDummies::dummy_cols(remove_first_dummy = TRUE)
+# SLR Earning ~ education age.
+wa_model <- lm(data = wadata_slr, PERNP ~. - Races - EDU )
+
+summary(wa_model)
+
+```
+
+
+4.
+=========================================
+Histograms in base R graphics
+
+```{r}
+
+
+
+```
+
+
+Summary
+=========================================
+
+
+```{r}
+# Save the rds file so I can reuse anything from this file in another file
+# save.image("office_TA.RData")
+
+# recover using load()
+# load("office_TA.RData")
+```
+
