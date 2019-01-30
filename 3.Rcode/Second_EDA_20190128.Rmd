@@ -47,7 +47,8 @@ Load data and transform
 
 ```{r}
 # Load data 
-waraw <- read.csv("../2.PreparedData/wadata2.csv")
+waraw <- read.csv("../2.PreparedData/wadata3.csv")
+
 
 # Examine data structure 
 str(waraw)
@@ -64,7 +65,7 @@ Race_tab <- data.frame("RAC1P" = 1:9,
                               "Alaska Native alone",
                               "American Indian and Alaska Native",
                               "Asian alone",
-                              "Native Hawaiian and Other Pacific Islander alone",
+                              "Native Hawaiian",
                               "Some Other Race alone",
                               "Two or More Races"))
 
@@ -76,16 +77,24 @@ Mar_tab <- data.frame("MAR" = 1:5,
 
 # clean data
 wa <- waraw %>% 
+      select(AGEP, RAC1P, SCHL, MAR, SEX, WKHP, PERNP) %>%
       # remove all obser under 14 years old, NA value  in education & earnings, Earning < 0
       filter(AGEP >= 14, !is.na(waraw$PERNP),!is.na(waraw$SCHL), RAC1P != 9, PERNP >= 0) %>%
-      mutate(EDU = ifelse(SCHL <= 9, "Under Highschool", 
+      mutate(EDU = ifelse(SCHL <= 9, "Under_Highschool", 
                           ifelse( SCHL <= 16, "Highschool", 
-                                  ifelse( SCHL <= 21 ,"Associate's & Bachelor's degree", "Master, Phd & Higher")))) %>%
+                                  ifelse( SCHL <= 19 ,"Some_College",
+                                         ifelse( SCHL == 20 ,"Associate's",
+                                                 ifelse( SCHL == 21 ,"Bachelor's",
+                                                         ifelse( SCHL == 22 ,"Master's",
+                                                                 ifelse( SCHL == 23 ,"Professional's", "Docterate"))))))),
+             IsFullTime = ifelse(WKHP > 34 & !is.na(WKHP), 1, 0))%>%
       left_join(Race_tab, by = "RAC1P") %>%
       left_join(Gender_tab, by = "SEX") %>%
       left_join(Mar_tab, by = "MAR")
 
 head(wa)
+wa$EDU <- as.factor(wa$EDU)
+wa$IsFullTime <- as.factor(wa$IsFullTime)
 
 
 summary(wa)
@@ -102,6 +111,7 @@ earn_educ_tab <- wa %>%
                 group_by(EDU) %>%
                 summarise(MinEarn = min(PERNP), MeanEarn = mean(PERNP), MedianEarn = median(PERNP), Max = max(PERNP))
 earn_educ_tab
+
 
 ```
 
@@ -141,7 +151,7 @@ Race_edu_barplot <- wa %>%
                 select(RAC1P, EDU) %>%
                 group_by(RAC1P, EDU) %>%
                 summarise(Count = n()) %>%
-                ggplot(mapping = aes(x = RAC1P, y = Count, fill = EDU)) +
+                ggplot(mapping = aes(x = RAC1P, y = Count/nrow(wa)*100, fill = EDU)) +
                          geom_bar(stat = "identity", position = "dodge")
                        
 Race_edu_barplot             
@@ -159,15 +169,14 @@ ggplot(data = wa, mapping = aes( x = AGEP, y = PERNP/1000)) +
 
 ### Earnings - RACE -EDU
 ```{r}
-
-ggplot(data = wa, mapping = aes( x = RAC1P, y = PERNP/1000, fill = EDU)) +
-  geom_bar(stat = "identity", position ="dodge") +
-  coord_flip() +
-  ggtitle("WA Residents' Earnings by age") +
-  xlab("RACE") +
-  #scale_x_discrete(labels =c(levels(wa$RAC1P))) +
-  ylab("Earnings (1000$)") 
-  
+# 
+# ggplot(data = wa, mapping = aes( x = PERNP/1000, fill = EDU)) +
+#   geom_histogram(stat = "count") +
+#   ggtitle("WA Residents' Earnings by age") +
+#   xlab("Earnings") +
+#   #scale_x_discrete(labels =c(levels(wa$RAC1P))) +
+#   ylab("count") 
+#   
 
 ```
 
@@ -186,15 +195,32 @@ wa %>% ggplot(mapping = aes(x = EDU, y= PERNP/1000)) +
 3. Model
 =========================================
 
+###3.1 How do earnings vary by educational attainment? 
 ```{r}
 #Prepare data
 wadata_slr <- wa %>% 
-              select(PERNP, Races, EDU) %>%
-              fastDummies::dummy_cols(remove_first_dummy = TRUE)
+              #filter(IsFullTime == 1) %>%
+              select(PERNP, EDU, IsFullTime) %>%
+              fastDummies::dummy_cols(remove_first_dummy = FALSE)
 # SLR Earning ~ education age.
-wa_model <- lm(data = wadata_slr, PERNP ~. - Races - EDU )
+wa_model <- lm(data = wadata_slr, PERNP ~ factor(EDU) +IsFullTime)
 
 summary(wa_model)
+
+```
+
+###3.2 Does the premium for higher education vary by race and ethnicity?
+
+```{r}
+wadata_2nd <- wa %>% 
+              filter(SCHL >= 17) %>%
+              select(PERNP, EDU, IsFullTime, Races) %>%
+              fastDummies::dummy_cols(remove_first_dummy = FALSE)
+
+# MLR Earning ~ education age.
+wa_model_q2 <- lm(data = wadata_2nd, PERNP ~ factor(EDU) +IsFullTime + factor(Races))
+
+summary(wa_model_q2)
 
 ```
 
