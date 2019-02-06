@@ -1,0 +1,251 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+
+```
+
+Clear environment of variables and packages  
+=========================================
+
+```{r}
+
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+
+# Clear environmet of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+
+```
+
+Load packages that include different functions  
+=========================================
+
+
+```{r }
+# Load libraries
+library(tidyverse)
+library(fastDummies)
+library(lmtest)
+library(sandwich)
+library(GGally)
+library(olsrr)
+library(robustbase)
+
+```
+
+Load data and transform 
+=========================================
+
+```{r}
+# Load data 
+waraw <- read.csv("../2.PreparedData/wadata3.csv")
+
+```
+
+
+
+```{r}
+# labling the variable RAC1P
+Race_tab <- data.frame("RAC1P" = 1:9,
+                        "Races"= c("White",
+                              "Black",
+                              "American Indian",
+                              "Alaska Native",
+                              "American Indian and Alaska Tribes",
+                              "Asian",
+                              "Islander",
+                              "Others",
+                              "Two or More Races"))
+
+
+Gender_tab <- data.frame("SEX" = 1:2, "Gender" = c("Male", "Femeal"))
+
+Mar_tab <- data.frame("MAR" = 1:5,
+                      "Marital" = c("Married","Widowed","Divorced","Separated","Never Married"))
+
+# clean data
+wa <- waraw %>% 
+      select(AGEP, RAC1P, SCHL, MAR, SEX, PERNP, SCIENGP, SCIENGRLP, LANX, WKHP) %>%
+      # remove all obser under 14 years old, NA value  in education & earnings, Earning < 0
+      filter(AGEP >= 14, !is.na(waraw$PERNP), !is.na(waraw$SCHL), RAC1P != 9, PERNP >= 300) %>%
+      mutate(EDU = ifelse(SCHL <= 9, "Primary_School", 
+                          ifelse( SCHL < 16, "Under_Highschool", 
+                                  ifelse( SCHL == 16, "Highschool",
+                                          ifelse( SCHL <= 19 ,"Some_College",
+                                                 ifelse( SCHL == 20 ,"Associate",
+                                                         ifelse( SCHL == 21 ,"Bachelor",
+                                                                 ifelse( SCHL == 22 ,"Master",
+                                                                         ifelse( SCHL == 23 ,"Professional", "Docterate")))))))),
+             IsFullTime = ifelse(WKHP > 34 & !is.na(WKHP), 1, 0),
+             IsScienEngr = ifelse(SCIENGP == 1 & !is.na(SCIENGP), TRUE, FALSE),
+             OnlyEnglish = ifelse(LANX == 2, TRUE, FALSE))%>%
+      left_join(Race_tab, by = "RAC1P") %>%
+      left_join(Gender_tab, by = "SEX") %>%
+      left_join(Mar_tab, by = "MAR")
+
+head(wa)
+wa$EDU = factor(wa$EDU, levels=c('Primary_School', 'Under_Highschool', 'Highschool','Some_College', 'Associate', 'Bachelor', 'Master', 'Professional', 'Docterate')) 
+wa$IsFullTime <- as.factor(wa$IsFullTime)
+wa$IsScienEngr <- as.factor(wa$IsScienEngr)
+wa$OnlyEnglish <- as.factor(wa$OnlyEnglish)
+
+
+
+summary(wa)
+nrow(is.na(wa$EDU))
+```
+
+##1.	In the state of Washington, how do earnings vary by educational attainment?
+### First model Earning ~ edu + AGEP + AGEP^2 +others
+```{r}
+#Prepare data
+wadata_mr <- wa %>% 
+              #filter(IsFullTime == 1) %>%
+              select(PERNP, EDU, AGEP, Marital, Gender, IsScienEngr ) %>%
+              fastDummies::dummy_cols(remove_first_dummy = TRUE) %>%
+              select( -EDU, -IsScienEngr, -Marital, -Gender)
+
+summary(wadata_mr)
+# SLR Earning ~ education age.
+Ear.edu.model <- lm(data = wadata_mr, PERNP ~ . + I(AGEP*AGEP))
+
+summary(Ear.edu.model)
+
+```
+
+### Testing Collinearity
+```{r}
+# Collinearity diag
+vcovHC(Ear.edu.model, type = "HC")
+#Generate the Robust standard errors and print them on screen 
+sandwich_se <- sqrt(diag(vcovHC(Ear.edu.model, type = "HC")))
+sandwich_se
+
+```
+
+### BP test
+
+```{r}
+bptest(Ear.edu.model)
+bptestEarn.model = lm(data = wadata_mr, residuals(Ear.edu.model)*residuals(Ear.edu.model) ~ . + I(AGEP*AGEP))
+summary(bptestEarn.model)
+```
+studentized Breusch-Pagan test
+
+data:  Ear.edu.model
+BP = 1254.5, df = 16, p-value < 2.2e-16
+
+p-value too small => reject H null => heteroskedaticity exists
+ => estimate logarith model
+
+### Log model
+```{r}
+# Logarith Earning ~ education age.
+Eaning.Edu.Log.model <- lm(data = wadata_mr, log(PERNP) ~ . + I(AGEP*AGEP))
+
+summary(Eaning.Edu.Log.model)
+```
+
+### BP test log(earning) ~...
+```{r}
+bptest(Eaning.Edu.Log.model)
+bptest.logEarn.model = lm(data = wadata_mr, residuals(Eaning.Edu.Log.model)*residuals(Eaning.Edu.Log.model) ~ . + I(AGEP*AGEP))
+summary(bptest.logEarn.model)
+```
+
+	studentized Breusch-Pagan test
+
+data:  Eaning.Edu.Log.model
+BP = 662.04, df = 16, p-value < 2.2e-16
+
+# Robust linear model
+```{r}
+# robust standard error
+Robus.Se <- sqrt(diag(vcovHC(Eaning.Edu.Log.model, type = "HC")))
+coeftest(Eaning.Edu.Log.model, vcov = vcovHC(Eaning.Edu.Log.model,type = "HC"))
+
+# robust standard error linear model
+robust.log.earn <- lmrob(log(PERNP) ~ . + I(AGEP*AGEP),  data = wadata_mr)
+
+summary(robust.log.earn)
+```
+
+
+### Premium Earning(higher education) ~ Race
+
+```{r}
+wadata_q2 <- wa %>% 
+              filter(SCHL >= 17) %>%
+              select(PERNP, Races, AGEP, Marital, Gender, IsScienEngr) %>%
+              fastDummies::dummy_cols(remove_first_dummy = TRUE) %>%
+              select( - c(Races, Gender, Marital, IsScienEngr))
+
+# MLR Earning ~ education age.
+Premium.Earning.model <- lm(data = wadata_q2, PERNP ~. + I(AGEP^2))
+
+summary(Premium.Earning.model)
+```
+
+### Testing Collinearity
+```{r}
+# Collinearity diag
+vcovHC(Premium.Earning.model, type = "HC")
+#Generate the Robust standard errors and print them on screen 
+premium_se <- sqrt(diag(vcovHC(Premium.Earning.model, type = "HC")))
+premium_se
+
+```
+
+### BP test
+
+```{r}
+# BP test for Premium model
+bptest(Premium.Earning.model)
+bptestPremium.model = lm(data = wadata_mr, residuals(Premium.Earning.model)*residuals(Premium.Earning.model) ~ . + I(AGEP*AGEP))
+summary(bptestPremium.model)
+```
+	studentized Breusch-Pagan test
+
+data:  Premium.Earning.model
+BP = 615.26, df = 15, p-value < 2.2e-16
+
+
+p-value too small => reject H null => heteroskedaticity exists
+ => estimate logarith model
+
+### Log model
+```{r}
+# Logarith Earning ~ education age.
+Premium.Log.model <- lm(data = wadata_q2, log(PERNP) ~ . + I(AGEP*AGEP))
+
+summary(Premium.Log.model)
+```
+
+### BP test log(earning) ~...
+```{r}
+# BP test for log( earning ) premium model
+bptest(Premium.Log.model)
+bptest.logPre.model = lm(data = wadata_q2, residuals(Premium.Log.model)*residuals(Premium.Log.model) ~ . + I(AGEP*AGEP))
+summary(bptest.logPre.model)
+```
+
+	studentized Breusch-Pagan test
+
+data:  Premium.Log.model
+BP = 431.45, df = 15, p-value < 2.2e-16
+
+# Robust linear model
+```{r}
+Robus.Pre.Se <- sqrt(diag(vcovHC(Eaning.Edu.Log.model, type = "HC")))
+coeftest(Premium.Log.model, vcov = vcovHC(Premium.Log.model,type = "HC"))
+
+#linear model with robust standard error
+#robust.logPre.model <- lmrob(log(PERNP) ~ . + I(AGEP*AGEP),  data = wadata_q2)
+
+summary(robust.logPre.model)
+```
+

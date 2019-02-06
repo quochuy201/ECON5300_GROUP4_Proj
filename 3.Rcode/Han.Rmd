@@ -1,0 +1,364 @@
+---
+title: "LMA project - EDA"
+author: 'Group 4: Han Li - Huy Le - Sourabh Gupta'
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    df_print: paged
+---
+
+Commented header  
+=========================================
+
+```{r echo = TRUE}
+# Course: ECON 5300
+# Title: 2nd EDA
+# Purpose: Preliminary Econometric Estimates 
+# Date: Jan 29
+# Author: Huy LE
+```
+
+
+Clear environment of variables and packages  
+=========================================
+
+```{r}
+
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+
+# Clear environmet of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+
+```
+
+Load packages that include different functions  
+=========================================
+
+
+```{r }
+# Load libraries
+library(tidyverse)
+library(fastDummies)
+library(dplyr)
+library(sandwich)
+
+```
+
+Load data and transform 
+=========================================
+
+
+```{r}
+# Load data 
+waraw <- read.csv("../2.PreparedData/wadata3.csv")
+
+
+# Examine data structure 
+str(waraw)
+
+```
+
+
+```{r}
+# labling the variable RAC1P
+Race_tab <- data.frame("RAC1P" = 1:9,
+                        "Races"= c("White alone",
+                              "Black or African American alone",
+                              "American Indian alone",
+                              "Alaska Native alone",
+                              "American Indian and Alaska Native",
+                              "Asian alone",
+                              "Native Hawaiian",
+                              "Some Other Race alone",
+                              "Two or More Races"))
+
+
+
+Gender_tab <- data.frame("SEX" = 1:2, "Gender" = c("Male", "Femeal"))
+
+Mar_tab <- data.frame("MAR" = 1:5,
+                      "Marital" = c("Married","Widowed","Divorced","Separated","Never Married"))
+
+
+
+# clean data
+wa <- waraw %>% 
+      select(AGEP, RAC1P, SCHL, MAR, SEX, WKHP, PERNP, SCIENGP) %>%
+      # remove all obser under 14 years old, NA value  in education & earnings, Earning < 0
+      filter(AGEP >= 14, !is.na(waraw$PERNP),!is.na(waraw$SCHL), RAC1P != 9, PERNP >= 300) %>%
+      mutate(EDU = ifelse(SCHL <= 9, "Primary_School", 
+                          ifelse( SCHL <= 15, "Under_Highschool", 
+                                  ifelse(SCHL == 16, "HighSchool",
+                                    ifelse( SCHL <= 19 ,"Some_College",
+                                           ifelse( SCHL == 20 ,"Associate",
+                                                   ifelse( SCHL == 21 ,"Bachelor",
+                                                           ifelse( SCHL == 22 ,"Master",
+                                                                   ifelse( SCHL == 23 ,"Professional", "Docterate"))))))))) %>%
+      mutate(Major = ifelse(SCIENGP == 1, "Science or Engineering",
+                            ifelse(SCIENGP == 2, "Other Major","Under Bachelor"))) %>%
+      left_join(Race_tab, by = "RAC1P") %>%
+      left_join(Gender_tab, by = "SEX") %>%
+      left_join(Mar_tab, by = "MAR") 
+
+head(wa)
+wa$EDU <- as.factor(wa$EDU)
+wa$Gender <- as.factor(wa$Gender)
+wa$Marital <- as.factor(wa$Marital)
+wa$Major <- as.factor(wa$Major)
+
+
+summary(wa)
+```
+
+
+```{r}
+wa_Alaska_Native <- subset(wa, Races == "Alaska Native alone", select = c(-Races, -RAC1P, -MAR, -SEX, -SCIENGP, -Major))
+wa_American_Indian_and_Alaska_Native <- subset(wa, Races == "American Indian and Alaska Native", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_Black_or_African_American <- subset(wa, Races == "Black or African American alone", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_American_Indian <- subset(wa, Races == "American Indian alone", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_Asian <- subset(wa, Races == "Asian alone", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_Native_Hawaiian <- subset(wa, Races == "Native Hawaiian", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_White <- subset(wa, Races == "White alone", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+wa_Other_Race <- subset(wa, Races == "Some Other Race alone", select = c(-Races, -SCHL, -RAC1P, -MAR, -SEX, -SCIENGP))
+```
+
+
+1. Univariate non-graphical -- Categorical
+=========================================
+##Earning by education attainment
+
+```{r}
+wa$EDU = factor(wa$EDU, levels=c('Under_Highschool', 'Highschool','Some_College', 'Associate', 'Bachelor', 'Professional',
+                                 'Master', 'Docterate')) 
+earn_educ_tab <- wa %>%
+                select(EDU, PERNP) %>%
+                group_by(EDU) %>%
+                summarise(MinEarn = min(PERNP), MeanEarn = mean(PERNP), MedianEarn = median(PERNP), Max = max(PERNP))
+earn_educ_tab
+
+
+```
+
+##Earning vary by race
+
+```{r}
+earn_race_tab <- wa %>% 
+                select(Races, PERNP) %>%
+                group_by(Races) %>%
+                summarise(MinEarn = min(PERNP), MeanEarn = mean(PERNP), MedianEarn = median(PERNP), Max = max(PERNP))
+earn_race_tab
+```
+
+##Educations vary by Races
+
+
+```{r}
+Edu_race_tab <- wa %>% 
+                select(Races, EDU) %>%
+                group_by(Races, EDU) %>%
+                summarise(Count = n()) %>%
+                spread(EDU, Count)
+Edu_race_tab
+
+
+```
+
+
+2. Univariate graphical code -- Categorical
+=========================================
+Categorical data - bar plot of counts
+
+
+```{r}
+#
+wa$EDU = factor(wa$EDU, levels=c('Under_Highschool', 'Highschool','Some_College', 'Associate', 'Bachelor', 'Professional',
+                                 'Master', 'Docterate')) 
+Race_edu_barplot <- wa %>% 
+                select(RAC1P, EDU) %>%
+                group_by(RAC1P, EDU) %>%
+                summarise(Count = n()) %>%
+                ggplot(mapping = aes(x = RAC1P, y = Count/nrow(wa)*100, fill = EDU)) +
+                         geom_bar(stat = "identity", position = "dodge")
+                       
+Race_edu_barplot             
+```
+
+```{r}
+
+ggplot(data = wa, mapping = aes( x = AGEP, y = PERNP/1000)) +
+  geom_point(stat = "identity") +
+  ggtitle("WA Residents' Earnings Distribution by ages") +
+  xlab("Age") +
+  ylab("Earnings (1000$)") +
+  geom_smooth(method = lm)
+```
+
+### Earnings - RACE -EDU
+```{r}
+# 
+# ggplot(data = wa, mapping = aes( x = PERNP/1000, fill = EDU)) +
+#   geom_histogram(stat = "count") +
+#   ggtitle("WA Residents' Earnings by age") +
+#   xlab("Earnings") +
+#   #scale_x_discrete(labels =c(levels(wa$RAC1P))) +
+#   ylab("count") 
+#   
+
+```
+
+### Earnings BoxPlot
+```{r}
+wa$EDU = factor(wa$EDU, levels=c('Under_Highschool', 'Highschool','Some_College', 'Associate', 'Bachelor', 'Professional',
+                                 'Master', 'Docterate')) 
+wa %>% ggplot(mapping = aes(x = EDU, y= PERNP/1000)) +
+      geom_boxplot() +
+      ggtitle("Earnings Distribution") +
+      ylab("Total Earnings (1000$)") +
+      xlab("Education")
+
+                
+
+```
+
+3. Model
+=========================================
+
+###3.1 How do earnings vary by educational attainment? 
+#### Model 1-1
+```{r}
+#Prepare data
+
+  
+# SLR Earning ~ education age.
+wa_model <- lm(data = wa_data, PERNP ~ .)
+
+summary(wa_model)
+
+```
+
+#### Testing Constant variance model 1
+
+```{r}
+#Conduct BPG Test
+library(lmtest)
+bptest(wa_model)
+bptestequation = lm( data=wa_data, residuals(wa_model)*residuals(wa_model) ~. - PERNP)
+summary(bptestequation) #note: BP = n*RSquared of model with squared residuals as dependent variable 
+
+```
+data:  wa_model
+BP = 16.188, df = 12, p-value = 0.1828
+p-value < 2.2e-16: not reject H0 => Heteroskedasticity
+
+
+### revise model with AGEP^2
+#### Model 1-2
+```{r}
+wa_model_rvs <- lm(data = wa_data, PERNP ~ . + I(AGEP^2))
+
+summary(wa_model_rvs)
+
+```
+
+### Testing Homoskedasticity
+```{r}
+earn_edu_pre <- data.frame("EarnPre"= predict(wa_model_rvs), "Residual" = residuals(wa_model_rvs), "stan.Res" = rstandard(wa_model_rvs), "Fitted"=wa_data$PERNP )
+
+#Residual vs fitted polot.
+earn_edu_pre %>% ggplot(aes(x = EarnPre, y = Residual)) + geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+```{r}
+
+#Conduct BPG Test
+bptest(wa_model_rvs)
+bptestequation1.2 = lm(data = wa_data, residuals(wa_model_rvs)*residuals(wa_model_rvs) ~. + I(AGEP^2) -PERNP)
+summary(bptestequation1.2) #note: BP = n*RSquared of model with squared residuals as dependent variable 
+
+library(sandwich)
+
+
+vcovHC(wa_model, type = "HC")
+#Generate the Robust standard errors and print them on screen 
+sandwich_se <- diag(vcovHC(wa_model, type = "HC"))
+sandwich_se
+
+
+```
+studentized Breusch-Pagan test
+
+data:  wa_model_rvs
+BP = 16.488, df = 13, p-value = 0.2238
+
+
+### estimate log(Earning) model
+
+```{r}
+logEarning.model <- lm( data = wa_data, log(PERNP)~ . +I(AGEP^2))
+
+summary(logEarning.model)
+```
+
+#### Heteroskedasticiy Log equation
+```{r}
+#Conduct BPG Test
+bptest(logEarning.model)
+bptestequation1.3 = lm( data = wa_data, residuals(logEarning.model)*residuals(logEarning.model) ~. + I(AGEP^2) -PERNP)
+summary(bptestequation1.3) #note: BP = n*RSquared of model with squared residuals as dependent variable 
+```
+studentized Breusch-Pagan test
+
+data:  logEarning.model
+BP = 517.75, df = 17, p-value < 2.2e-16
+
+```{r}
+#Generate the Variance Covariance Matrix of the Parameter Estimates
+vcovHC(logEarning.model, type = "HC") #the diagonal elements are the variances of the parameter estimates
+
+#Generate the Robust standard errors and print them on screen 
+sandwich_se <- sqrt(diag(vcovHC(logEarning.model, type = "HC")))
+sandwich_se
+# generate the robust standard errors and t - test 
+coeftest(logEarning.model, vcov = vcovHC(logEarning.model,type = "HC"))
+```
+
+
+###3.2 Does the premium for higher education vary by race and ethnicity?
+
+```{r}
+wadata_2nd <- wa %>% 
+              filter(SCHL >= 17) %>%
+              select(AGEP, Major, Gender, Marital, EDU, PERNP, WKHP, Races)
+
+# MLR Earning ~ education age.
+wa_model_q2 <- lm(data = wadata_2nd, PERNP ~. + I(AGEP^2))
+
+summary(wa_model_q2)
+
+```
+
+
+4.
+=========================================
+Histograms in base R graphics
+
+```{r}
+
+
+
+```
+
+
+Summary
+=========================================
+
+
+```{r}
+# Save the rds file so I can reuse anything from this file in another file
+# save.image("office_TA.RData")
+
+# recover using load()
+# load("office_TA.RData")
+```
